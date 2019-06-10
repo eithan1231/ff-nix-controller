@@ -1,0 +1,11 @@
+# Endpoint at which we get context about this client and shit.
+AutoAPIContext: https://www.lechr.com/containers/nixnative/api/context
+
+XSrcHeader: FF X-Src Validation
+
+# A hostname whose A record points at 127.0.0.1, and AAA record points at [::1]
+host: localhost.lechrnodes.com
+
+# Port for local server.
+# NOTE: Make sure this is set in server configuration.
+port: 3453

@@ -1,0 +1,210 @@
+<!DOCTYPE html>
+<html lang="en" dir="ltr">
+  <head>
+    <meta charset="utf-8">
+    <title>LechrVPN For Nix!</title>
+    <link rel="stylesheet" href="asset?/css/bootstrap.css">
+    <link rel="stylesheet" href="asset?/css/style.css">
+
+    <script src="asset?/js/bootstrap.js" charset="utf-8"></script>
+    <script src="asset?/js/jquery.js" charset="utf-8"></script>
+
+    <script src="asset?/js/mustache.js" charset="utf-8"></script>
+    <script src="asset?/js/main.js" charset="utf-8"></script>
+    <script type="text/javascript">
+      window.ff_settings = {
+        wsEndpoint: `ws://${location.hostname}:${location.port}/interface`
+      };
+      window.addEventListener('load', main);
+    </script>
+  </head>
+  <body>
+    <div id="app">
+      <noscript>
+        <h1>Incompatible Browser</h1>
+        <p>
+          The browser you are using does not support JavaScript and is
+          therefore unable to communicate with the backend service.
+        </p>
+      </noscript>
+    </div>
+
+
+
+    <!-- ================================================================= -->
+    <!-- Login Template (ROOT) -->
+    <script type="text/html" id="template-login">
+      <div class="form-signin text-center">
+        <img src="asset?/png/large-logo.png" width="90px"/>
+        <h1 class="h3 mb-3 font-weight-normal">Please sign in</h1>
+
+        <div class="alert alert-primary" role="alert" id="status" hidden>
+          Hey, you're a dick. But you don't know that, because you cannot
+          see this alert... So I'll just be here, talking to myself, all alone,
+          in a dark room, where i eat, exercise (lol), and cry myself to sleep..
+
+          Please help me.
+        </div>
+        <div>
+          <label for="inputEmail" class="sr-only">Username</label>
+          <input type="text" id="inputUsername" class="form-control" placeholder="Username" required autofocus>
+        </div>
+
+
+        <div>
+          <label for="inputPassword" class="sr-only">Password</label>
+          <input type="password" id="inputPassword" class="form-control" placeholder="Password" required>
+        </div>
+
+        <button class="btn btn-lg btn-primary btn-block" type="button" onclick="doAutomaticAuthentication()">Sign in</button>
+        <p class="mt-5 mb-3 text-muted">&copy; Lechr 2019</p>
+      </div>
+    </script>
+
+
+
+    <!-- ================================================================= -->
+    <!-- Home Template (ROOT) -->
+    <script type="text/html" id="template-home">
+
+      <div class="container border" style="min-width: 500px; max-width: 700px;">
+        <h1>Lechr VPN Nix Client</h1>
+
+
+        <div id="home-servers" class="table-responsive" style="min-height: 200px; max-height: 300px;">
+          Loading list of servers...
+        </div>
+        <hr>
+
+
+        <div id="home-footer" style="min-height: 50px;" class="row">
+          Loading footer....
+        </div>
+        <hr>
+
+
+        <div id="status" style="margin-bottom: 10px;">
+          Pending Status Update
+        </div>
+      </div>
+
+    </script>
+
+
+
+    <!-- ================================================================= -->
+    <!-- Server list template (Sub 'template-home') -->
+    <script type="text/html" id="template-home-servers">
+      <table class="table table-sm">
+        <thead>
+          <tr>
+            <th scope="col">ID</th>
+            <th scope="col">Country</th>
+            <th scope="col">City</th>
+            <th scope="col">Hostname</th>
+            <th scope="col">Protocols</th>
+          </tr>
+        </thead>
+        <tbody>
+          {{#servers}}
+            <tr class="tr-node noselect" data-id="{{ id }}" onclick="doAutomaticSelectServer(this.dataset.id)">
+              <th>{{id}}</th>
+              <td>{{country}}</td>
+              <td>{{city}}</td>
+              <td>{{hostname}}</td>
+              <td></td>
+            </tr>
+          {{/servers}}
+          {{^servers}}
+            <h3>No servers found</h3>
+          {{/servers}}
+        </tbody>
+      </table>
+
+    </script>
+
+
+
+    <!-- ================================================================= -->
+    <!-- Home footer (Sub 'template-home') -->
+    <script type="text/html" id="template-home-footer">
+      <div id="home-footer-info" class="col-7">
+        Loading Information...
+      </div>
+      <div id="home-footer-connection" class="col-5 border-left">
+        Loading Status...
+      </div>
+    </script>
+
+
+
+    <!-- ================================================================= -->
+    <!-- Server information with connect buttons (Sub 'template-home-footer') -->
+    <script type="text/html" id="template-home-footer-info">
+      <div class="row">
+        <div class="col-5">
+          <button class="btn btn-primary btn-block" style="width: 100%">Connect</button>
+          <button class="btn btn-secondary btn-block" style="width: 100%">Disconnect</button>
+        </div>
+        <div class="col-7" style="font-size: 14px">
+          <div>
+            Server: <span class="float-right" title="city/country/id">{{city}}/{{country}}/{{id}}</span>
+          </div>
+
+          <div>
+            IP: <span class="float-right">{{ip}}</span>
+          </div>
+        </div>
+      </div>
+    </script>
+
+
+
+    <!-- ================================================================= -->
+    <!-- Connection information (Sub 'template-home-footer') -->
+    <script type="text/html" id="template-home-footer-connection">
+      <div>
+        Server: <span class="float-right" title="city/country/id">{{server}}</span>
+      </div>
+
+      <div>
+        Private IP: <span class="float-right">{{ private-ip }}</span>
+      </div>
+
+      <div>
+        Public IP: <span class="float-right">{{ public-ip }}</span>
+      </div>
+
+      <div>
+        Bandwidth: <span class="float-right">{{ bandwidth }}</span>
+      </div>
+    </script>
+
+
+
+    <!-- ================================================================= -->
+    <!-- Loading screen (ROOT) -->
+    <script type="text/html" id="template-loading">
+      <h1>Loading...</h1>
+      {{#explanation}}
+        <code>{{explanation}}</code>
+      {{/explanation}}
+    </script>
+
+
+
+    <!-- ================================================================= -->
+    <!-- Error screen (ROOT) -->
+    <script type="text/html" id="template-reload">
+      <div class="container">
+        <h1>Error occured. Reload page.</h1>
+        {{ #explanation }}
+          <code>{{ explanation }}</code>
+        {{ /explanation }}
+        <a href="javascript:" onclick="location.href = location.href">
+          Click here to reload
+        </a>
+      </div>
+    </script>
+  </body>
+</html>

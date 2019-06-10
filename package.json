@@ -1,0 +1,20 @@
+{
+  "name": "ff-nix-controller",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "ip": "^1.1.5",
+    "js-yaml": "^3.13.1",
+    "request": "^2.88.0",
+    "request-promise-native": "^1.0.7",
+    "tmp-promise": "^2.0.1",
+    "ws": "^7.0.0"
+  }
+}
