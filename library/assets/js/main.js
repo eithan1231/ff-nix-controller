@@ -1,7 +1,23 @@
 function _debug(string)
 {
+  dubugLog.push(string);
   console.log(`FriedFame: ${string}`);
 }
+
+// Status translations
+var openVPNStatusTranslations = {
+  'connecting': 'Connecting to server',
+  'connected': 'Connected',
+  'reconnecting': 'Reconnecting',
+  'wait': 'Waiting for service',
+  'auth': 'Authenticating',
+  'get_config': 'Getting Configuration',
+  'assign_ip': 'Assigning IP address',
+  'add_routes': 'Adding Routes',
+  'exiting': 'Terminating...'
+};
+
+var dubugLog = [];
 
 // The web-socket object used for backend-communications
 var globalWebSocket = null;
@@ -12,9 +28,16 @@ var app = null;
 // List of all servers.
 var servers = [];
 
+// The server thats currently selected (DOES NOT MEAN CONNECTED)
+var selectedServer = {};
+
 // List of function hooks for templates (IE: When a template loads, it will call
 // a hook)
 var templateHooks = {};
+
+// These two variables are used in conjunction to generate a template.
+var latestOpenVPNBandwidth = null;
+var latestOpenVPNState = null;
 
 
 /**
@@ -22,21 +45,83 @@ var templateHooks = {};
 */
 function requestServerReload()
 {
+  _debug('Requesting server reload (server list)')
   send({
-    reason: 'server-list'
+    reason: 'server-list',
   });
 }
 
+/**
+* Gets a server by ID
+*/
+function getServerById(id)
+{
+  for (const server of servers) {
+    if(server.id == id) {
+      return server;
+    }
+  }
+
+  return null;
+}
+
+/**
+* Sends command to connect to selected server automatically
+*/
+function doAutomaticConnect()
+{
+  _debug('Automatic connect');
+
+  if(!selectedServer) {
+    _debug('Automatic connect - Bad server selected');
+    return setStatus('Invalid server selected');
+  }
+
+  send({
+    reason: 'connect',
+    nodeId: selectedServer.id
+  });
+}
+
+/**
+* Sends disconnct command to server.
+*/
+function doAutomaticDisconnect()
+{
+  _debug('Automatic disconnect');
+
+  send({
+    reason: 'disconnect'
+  });
+}
+
+/**
+* Requests server to re-send all connection information
+*/
+function doRequestConnectionInfo()
+{
+  _debug('Requesting connection information (Bandwidth and Server)')
+  send({
+    reason: 'reload-connection-data'
+  })
+}
+
+/**
+* Updates the selected server
+*/
 function doAutomaticSelectServer(id)
 {
   _debug(`Select server ${id}`);
-  for (let server of servers) {
-    if(server.id == id) {
-      return setTemplate('home-footer-info', 'template-home-footer-info', server);
-    }
+  const server = getServerById(id);
+  if(server) {
+    selectedServer = server;
+    return setTemplate('home-footer-info', 'template-home-footer-info', server);
   }
 }
 
+/**
+* Updates the connection status part of the footer.
+*/
 function setConnectionStatus(server = 'N/A', privateIp = 'N/A', publicIp = 'N/A', bandwidth = "N/A")
 {
   return setTemplate('home-footer-connection', 'template-home-footer-connection', {
@@ -131,6 +216,18 @@ function onMessage(data)
       return onSvrInit(data);
     }
 
+    case 'openvpn-close': {
+      return onSvrOpenVPNClose(data);
+    }
+
+    case 'openvpn-state': {
+      return onSvrOpenVPNState(data);
+    }
+
+    case 'openvpn-bandwidth': {
+      return onSvrOpenVPNBandwidth(data);
+    }
+
     default: {
       _debug(`Unknown response reason ${data.reason}`);
     }
@@ -204,6 +301,72 @@ function onSvrNodeListResponse(data)
 }
 
 /**
+* OpenVPN close event
+*/
+function onSvrOpenVPNClose(data)
+{
+  _debug('OpenVPN Close');
+  setStatus('Disconnected');
+  setConnectionStatus();
+}
+
+/**
+* OpenVPN state event
+*/
+function onSvrOpenVPNState(data)
+{
+  _debug('OpenVPN State Change');
+  latestOpenVPNState = data.state;
+  updateFooterConnection();
+}
+
+/**
+* OpenVPN state event
+*/
+function onSvrOpenVPNBandwidth(data)
+{
+  latestOpenVPNBandwidth = data.bandwidth;
+  updateFooterConnection();
+}
+
+/**
+* Updates the connection status footer section
+*/
+function updateFooterConnection()
+{
+  // Updating status
+  if(latestOpenVPNState !== null) {
+    setStatus(openVPNStatusTranslations[latestOpenVPNState.stateName] || 'Unknown Status');
+  }
+
+  var serverName = 'N/A';
+  var localIp = 'N/A';
+  var remoteIp = 'N/A'
+  if(latestOpenVPNState !== null) {
+    var server = getServerById((latestOpenVPNState.nodeId || latestOpenVPNBandwidth.nodeId) || null);
+    if(server) {
+      localIp = latestOpenVPNState.localIp;
+      remoteIp = latestOpenVPNState.remoteIp;
+      serverName = `${server.city}/${server.country}/${server.id}`;
+    }
+  }
+
+  var bandwidthUsage = 'N/A';
+  if(latestOpenVPNBandwidth !== null) {
+    var receiveVisual = getSizeAsVisual(latestOpenVPNBandwidth.rx);
+    var sendVisual = getSizeAsVisual(latestOpenVPNBandwidth.tx);
+    bandwidthUsage = `${receiveVisual}/${sendVisual}`;
+  }
+
+  setConnectionStatus(
+    serverName,
+    localIp,
+    remoteIp,
+    bandwidthUsage
+  );
+}
+
+/**
 * 'init' (initial) server command
 */
 function onSvrInit(data)
@@ -254,6 +417,8 @@ function main()
 
     // Setting default server status (N/A)
     setConnectionStatus();
+
+    doRequestConnectionInfo();
   })
 
   globalWebSocket = new WebSocket(window.ff_settings.wsEndpoint);
@@ -321,6 +486,19 @@ function setStatus(status)
 function send(...data)
 {
   return globalWebSocket.json(...data);
+}
+
+function getSizeAsVisual(bytes, si = false) {
+  if(Math.abs(bytes) < 1024) {
+    return bytes + ' B';
+  }
+  var units = ['kB','MB','GB','TB','PB','EB','ZB','YB'];
+  var u = -1;
+  do {
+    bytes /= 1024;
+    ++u;
+  } while(Math.abs(bytes) >= 1024 && u < units.length - 1);
+  return bytes.toFixed(1)+' '+units[u];
 }
 
 /**

@@ -50,6 +50,10 @@ class routeAsset
         return 'image/png';
       }
 
+      case '.ic': {
+        return 'image/x-icon';
+      }
+
       default: return 'application/x-octet-stream';
     }
   }

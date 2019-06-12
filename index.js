@@ -26,7 +26,10 @@ async function main()
   await OpenVPN.init({
     Management: OpenVPNManagement,
     AutoAPI: AutoAPI
-  })
+  });
+  await routeInterface.init({
+    OpenVPN: OpenVPN
+  });
 
   const router = new Router(config);
   router.registerRoute(routeIndex);

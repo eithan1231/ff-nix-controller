@@ -190,6 +190,22 @@ class AutoAPI
   }
 
   /**
+  * gets node authentication parameters
+  */
+  static getNodeAuth()
+  {
+    if(!AutoAPI.isLoggedIn()) {
+      return null;
+    }
+
+    return {
+      type: 'userpass',
+      username: AutoAPI.userId,
+      password: AutoAPI.nodeAuth
+    };
+  }
+
+  /**
   * Sends a heartbeat to the server.
   */
   static async doHeartbeat()

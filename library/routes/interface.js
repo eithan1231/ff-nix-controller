@@ -2,8 +2,10 @@ const WebSocket = require('ws');
 
 class routeInterface
 {
-  static initialize()
+  static async init(options = {})
   {
+    this.OpenVPN = options.OpenVPN || null;
+
     this.webSocketServer = new WebSocket.Server({ noServer: true });
     this.webSocketServer.on('connection', routeInterface._onConnection.bind(this));
 
@@ -13,6 +15,28 @@ class routeInterface
         wc.json(data);
       });
     };
+
+    if(this.OpenVPN) {
+      this.OpenVPN.on('state', (state) => {
+        this.webSocketServer.json({
+          reason: 'openvpn-state',
+          state: state
+        });
+      });
+
+      this.OpenVPN.on('bandwidth', (bandwidth) => {
+        this.webSocketServer.json({
+          reason: 'openvpn-bandwidth',
+          bandwidth: bandwidth
+        });
+      });
+
+      this.OpenVPN.on('close', (bandwidth) => {
+        this.webSocketServer.json({
+          reason: 'openvpn-close',
+        });
+      });
+    }
   }
 
   static _onConnection(options, ws, req)
@@ -21,8 +45,7 @@ class routeInterface
 
     ws.json({
       reason: 'init',
-      loggedIn: AutoAPI.isLoggedIn(),
-      // TODO: When we finish OpenVPNManagemetn and stuff, send a status report.
+      loggedIn: AutoAPI.isLoggedIn()
     });
 
     ws.on('json', async (json) => {
@@ -50,6 +73,23 @@ class routeInterface
           break;
         }
 
+        case 'connect': {
+          if(typeof json.nodeId !== 'undefined') {
+            if(this.OpenVPN.isRunning()) {
+              await this.OpenVPN.kill();
+            }
+            await this.OpenVPN.start(json.nodeId);
+          }
+          break;
+        }
+
+        case 'disconnect': {
+          if(this.OpenVPN.isRunning()) {
+            await this.OpenVPN.kill();
+          }
+          break;
+        }
+
         case 'server-list': {
           const nodeList = await AutoAPI.getNodes();
           if(nodeList) {
@@ -58,6 +98,12 @@ class routeInterface
               servers: nodeList
             });
           }
+          break;
+        }
+
+        case 'reload-connection-data': {
+          this.OpenVPN.emitBandwidth();
+          this.OpenVPN.emitState();
           break;
         }
 
@@ -127,5 +173,4 @@ class routeInterface
 }
 
 
-routeInterface.initialize();
 module.exports = routeInterface;
