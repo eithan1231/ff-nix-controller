@@ -11,6 +11,7 @@ class AutoAPI
     AutoAPI.heartbeatInterval = null;
     AutoAPI.RemoteContext = config.RemoteContext || null;
     AutoAPI.XSrcHeader = config.XSrcHeader || '';
+    AutoAPI.events = {};
   }
 
   /**
@@ -112,8 +113,11 @@ class AutoAPI
       if(response.headers['content-type'] === 'application/json') {
         const parsedResponse = JSON.parse(response.body);
 
-        if(parsedResponse.message === 'okay') {
-
+        if(parsedResponse.message === 'bad-token') {
+          AutoAPI.logout();
+          return null;
+        }
+        else if(parsedResponse.message === 'okay') {
           return parsedResponse.servers;
         }
         else {
@@ -143,7 +147,14 @@ class AutoAPI
     const response = await requestPromise(request);
 
     if(response.statusCode === 200) {
-      if(response.headers['content-type'] === 'application/ovpn-config') {
+      if(response.headers['content-type'] === 'application/json') {
+        const responseParsed = JSON.parse(response.body);
+        if(responseParsed.message == 'bad-token') {
+          AutoAPI.logout();
+        }
+        return null;
+      }
+      else if(response.headers['content-type'] === 'application/ovpn-config') {
         return response.body;
       }
       else {
@@ -190,6 +201,21 @@ class AutoAPI
   }
 
   /**
+  * De-authenticates
+  */
+  static logout()
+  {
+    AutoAPI.token = '';
+    AutoAPI.nodeAuth = '';
+    AutoAPI.userId = 0;
+    if(AutoAPI.heartbeatInterval) {
+      clearInterval(AutoAPI.heartbeatInterval);
+      AutoAPI.heartbeatInterval = null;
+    }
+    AutoAPI.emit('logout');
+  }
+
+  /**
   * gets node authentication parameters
   */
   static getNodeAuth()
@@ -213,8 +239,19 @@ class AutoAPI
     if(!AutoAPI.isLoggedIn()) {
       return false;
     }
+
     const request = await AutoAPI.buildRequestOptions('autoapi-heartbeat');
     const response = await requestPromise(request);
+
+    if(response.headers['content-type'] === 'application/json') {
+      const responseParsed = JSON.parse(response.body);
+
+      if(responseParsed === 'bad-token') {
+        AutoAPI.logout();
+        return false;
+      }
+    }
+
     return response.statusCode === 200;
   }
 
@@ -228,12 +265,28 @@ class AutoAPI
     }
 
     AutoAPI.heartbeatInterval = setInterval(async () => {
-      if(!AutoAPI.isLoggedIn()) {
+      if(!await AutoAPI.doHeartbeat()) {
         return clearInterval(AutoAPI.heartbeatInterval);
       }
-
-      await AutoAPI.doHeartbeat();
     }, 1200000);
+  }
+
+  static emit(name, ...args)
+  {
+    if(typeof AutoAPI.events[name] === 'undefined') {
+      return;
+    }
+
+    AutoAPI.events[name].forEach(callback => callback(...args));
+  }
+
+  static on(name, cb)
+  {
+    if(typeof AutoAPI.events[name] === 'undefined') {
+      AutoAPI.events[name] = [];
+    }
+
+    AutoAPI.events[name].push(cb);
   }
 }
 

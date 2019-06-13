@@ -4,6 +4,7 @@ const yaml = require('js-yaml');
 const config = yaml.safeLoad(fs.readFileSync('config.yaml', 'utf8'));
 
 // Loading all services and stuff.
+const open = require('open');
 const LocalHttpServer = require('./library/LocalHTTPServer');
 const RemoteContext = require('./library/RemoteContext');
 const AutoAPI = require('./library/AutoAPI');
@@ -28,19 +29,35 @@ async function main()
     AutoAPI: AutoAPI
   });
   await routeInterface.init({
-    OpenVPN: OpenVPN
+    OpenVPN: OpenVPN,
+    AutoAPI: AutoAPI
   });
 
   const router = new Router(config);
   router.registerRoute(routeIndex);
   router.registerRoute(routeAsset);
   router.registerRoute(routeInterface);
-  router.registerOption('RemoteContext', RemoteContext);
-  router.registerOption('AutoAPI', AutoAPI);
 
   const localHttpServer = new LocalHttpServer();
   localHttpServer.setRouter(router);
   localHttpServer.listen(config.port);
+
+  // You should Open browser page here, but it's somewhat faulty. If you're
+  // running in root, it will open it under root, not necessarily the user
+  // account in use.
 }
 
+async function unhandledError(err)
+{
+  if(err.errno === 'EADDRINUSE') {
+    // Assuming there's already a 'service' running, so let's open the panel.
+    await open(`http://${config.host}:${config.port}/`);
+  }
+  else {
+    console.error(err);
+  }
+  process.exit(1);
+}
+
+process.on('uncaughtException', unhandledError);
 main();

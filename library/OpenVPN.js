@@ -48,10 +48,12 @@ class OpenVPN
         rx: rx,
         tx: tx,
         nodeId: OpenVPN.connectedNodeId
-      }
+      };
 
       OpenVPN.emitBandwidth();
     });
+
+    OpenVPN.Management.on('error', e => OpenVPN.emit('error', e));
   }
 
   static isRunning()
@@ -59,37 +61,67 @@ class OpenVPN
     return OpenVPN.child !== null;
   }
 
-  static async start(nodeId)
+  static start(nodeId)
   {
-    const openVPNConfig = await OpenVPN.AutoAPI.getOpenVPNConfig(nodeId);
-    const configLocation = (await tmpPromise.file()).path;
-    await fsPromises.writeFile(configLocation, openVPNConfig);
+    return new Promise(async(resolve, reject) => {
+      const connectability = await OpenVPN.AutoAPI.canConnect(nodeId);
+      if(!connectability.permit) {
+        return resolve({
+          message: connectability.message
+        });
+      }
 
-    OpenVPN.child = childProcess.spawn('openvpn', [
-      '--config',
-      configLocation,
-      '--management',
-      '127.0.0.1',
-      OpenVPN.port.toString(),
-      '--management-hold',
-      '--management-query-passwords'
-    ]);
+      const openVPNConfig = await OpenVPN.AutoAPI.getOpenVPNConfig(nodeId);
+      if(!openVPNConfig) {
+        // Token is more than likely deactivated. AutoAPI class, when token
+        // is not longer valid, will emit logout event. That is dealt with
+        // elsewhere. So we can just throw a generic error.
+        return reject(new Error('Failed to get OpenVPN configuration'));
+      }
 
-    OpenVPN.child.on('exit', () => {
-      OpenVPN.kill();// Just to ensure management is ded
-    });
+      const configLocation = (await tmpPromise.file()).path;
+      await fsPromises.writeFile(configLocation, openVPNConfig);
 
-    // Allowing time to OpenVPN server to start
-    setTimeout(async () => {
-      // Setting the connected node id (Do not do it at the beginning of this
-      // function) Was gettign a weird bug when it was at the start
-      OpenVPN.connectedNodeId = nodeId;
+      OpenVPN.child = childProcess.spawn('openvpn', [
+        '--config',
+        configLocation,
+        '--management',
+        '127.0.0.1',
+        OpenVPN.port.toString(),
+        '--management-hold',
+        '--management-query-passwords'
+      ]);
 
-      // Running management
-      await OpenVPN.Management.start(OpenVPN.port, {
-        auth: OpenVPN.AutoAPI.getNodeAuth()
+      OpenVPN.child.on('error', (err) => {
+        console.error(err);
+        OpenVPN.emit('error', err);
+        OpenVPN.kill();
       });
-    }, 1000)
+
+      OpenVPN.child.on('exit', () => {
+        OpenVPN.kill();// Just to ensure management is ded
+      });
+
+      // Allowing time to OpenVPN server to start
+      setTimeout(async () => {
+        if(OpenVPN.child === null || OpenVPN.child.killed) {
+          return reject(new Error('OpenVPN Process was terminated'));
+        }
+
+        // Setting the connected node id (Do not do it at the beginning of this
+        // function) Was gettign a weird bug when it was at the start
+        OpenVPN.connectedNodeId = nodeId;
+
+        // Running management
+        OpenVPN.Management.start(OpenVPN.port, {
+          auth: OpenVPN.AutoAPI.getNodeAuth()
+        });
+
+        return resolve({
+          message: connectability.message
+        });
+      }, 1000);
+    });
   }
 
   static async kill()
@@ -104,8 +136,7 @@ class OpenVPN
     }
     OpenVPN.child = null;
 
-
-    // Basically just say we're ded
+    // This will send NULL, which will update the connection status.
     OpenVPN.emitBandwidth();
     OpenVPN.emitState();
   }

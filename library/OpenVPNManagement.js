@@ -208,6 +208,10 @@ class OpenVPNManagement
 
   static async close()
   {
+    if(typeof OpenVPNManagement.socket === 'undefined') {
+      return;
+    }
+
     if(!OpenVPNManagement.socket.destroyed) {
       await OpenVPNManagement.send('quit');
       OpenVPNManagement.socket.destroy();

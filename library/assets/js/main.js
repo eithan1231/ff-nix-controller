@@ -4,8 +4,9 @@ function _debug(string)
   console.log(`FriedFame: ${string}`);
 }
 
+
 // Status translations
-var openVPNStatusTranslations = {
+var statusTranslations = {
   'connecting': 'Connecting to server',
   'connected': 'Connected',
   'reconnecting': 'Reconnecting',
@@ -14,7 +15,23 @@ var openVPNStatusTranslations = {
   'get_config': 'Getting Configuration',
   'assign_ip': 'Assigning IP address',
   'add_routes': 'Adding Routes',
-  'exiting': 'Terminating...'
+  'exiting': 'Terminating...',
+  'try-again-later': 'Try again later',
+  'missing-param': 'Missing Input',
+  'bad-username': 'Username is invalid, or cannot be found',
+  'bad-password': 'Password mismatch',
+  'autoapi-error': 'Remote server error',
+  'no-subscription': 'No active subscription found',
+  'bad-param': 'Malformed input',
+  'missing-token': 'AutoAPI Error (token missing)',
+  'bad-token': 'You have been logged out',
+  'bad-node': 'VPN Server cannot be found',
+  'node-disabled': 'VPN server has been disabled',
+  'node-overload': 'VPN server has too many active connections. Try another.',
+  'bad-subscription': 'You do not have a subscription',
+  'bad-auth': 'VPN authentication token is invalid',
+  'bad-plan': 'Your subscription plan is missing',
+  'exceeds-maximum-concurrent': 'You are exceeding your allocated concurrent connections'
 };
 
 var dubugLog = [];
@@ -48,6 +65,14 @@ function requestServerReload()
   _debug('Requesting server reload (server list)')
   send({
     reason: 'server-list',
+  });
+}
+
+function doAutomaticLogout()
+{
+  _debug('Automatic logout');
+  send({
+    'reason': 'logout'
   });
 }
 
@@ -204,8 +229,20 @@ function onMessage(data)
       return onSvrStatus(data);
     }
 
+    case 'logout': {
+      return onSvrLogout(data);
+    }
+
+    case 'internal-error': {
+      return onSvrInternalError(data);
+    }
+
     case 'login-response': {
       return onSvrLoginResponse(data);
+    }
+
+    case 'connect-response': {
+      return onSvrConnectResponse(data);
     }
 
     case 'server-list-response': {
@@ -243,6 +280,22 @@ function onSvrStatus(data)
   _debug('OpenVPN Status Report');
 }
 
+function onSvrLogout(data)
+{
+  _debug('Server logout');
+  setTemplate('app', 'template-login');
+}
+
+/**
+* Error occured on server
+*/
+function onSvrInternalError(data)
+{
+  _debug('OpenVPN Error');
+  console.log(data.error);
+  setTemplate('app', 'template-error', { error: JSON.stringify(data.error) });
+}
+
 /**
 * 'login-response' server event
 */
@@ -253,30 +306,16 @@ function onSvrLoginResponse(data)
     setTemplate('app', 'template-home');
   }
   else {
-    switch (data.message) {
-      case 'try-again-later':
-        setStatus('Try again later');
-        break;
-      case 'missing-param':
-        setStatus('Missing Input');
-        break;
-      case 'bad-username':
-        setStatus('Username not found');
-        break;
-      case 'bad-password':
-        setStatus('Password mismatch');
-        break;
-      case 'autoapi-error':
-        setStatus('Cannot access remote server');
-        break;
-      case 'no-subscription':
-        setStatus('No subscription can be found');
-        break;
-      default:
-        setStatus(`Unknown response ${data.message}`);
-        break;
-    }
+    setStatus(statusTranslations[data.message] || 'Unknown Login Response');
   }
+}
+
+/**
+* Response to conenct event.
+*/
+function onSvrConnectResponse(data)
+{
+  setStatus(statusTranslations[data.message] || `Unknown connect response (${data.message})`);
 }
 
 /**
@@ -335,8 +374,8 @@ function onSvrOpenVPNBandwidth(data)
 function updateFooterConnection()
 {
   // Updating status
-  if(latestOpenVPNState !== null) {
-    setStatus(openVPNStatusTranslations[latestOpenVPNState.stateName] || 'Unknown Status');
+  if(latestOpenVPNState !== null && latestOpenVPNBandwidth !== null) {
+    setStatus(statusTranslations[latestOpenVPNState.stateName] || 'Unknown Status');
   }
 
   var serverName = 'N/A';
@@ -468,6 +507,7 @@ function main()
 */
 function setStatus(status)
 {
+  _debug(`Set Status: ${status}`);
   var element = document.getElementById('status');
   if(element) {
     if(element.hidden) {

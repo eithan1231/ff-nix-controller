@@ -86,8 +86,15 @@
         <hr>
 
 
-        <div id="status" style="margin-bottom: 10px;">
-          Pending Status Update
+        <div class="row" style="padding-bottom: 5px">
+          <div id="status" class="col-7">
+            Pending Status Update
+          </div>
+          <div class="col-5">
+            <a class="float-right" href="javascript://" onclick="doAutomaticLogout()">
+              Logout
+            </a>
+          </div>
         </div>
       </div>
 
@@ -180,6 +187,38 @@
 
       <div>
         Bandwidth: <span class="float-right">{{ bandwidth }}</span>
+      </div>
+    </script>
+
+
+
+    <!-- ================================================================= -->
+    <!-- Generic Error (ROOT) -->
+    <script type="text/html" id="template-error">
+      <div class="container">
+        <h1>Internal Error</h1>
+        <p>
+          We have enounctered an error. We are not sure the cause of this error. If you are unable to resolve this issue, we suggest you make a support ticket.
+        </p>
+
+        <p>
+          Ensure that:
+          <br>
+          1) You have Administrative permissions or Sudo permissions, and that this application is running with them;
+          <br>
+          2) OpenVPN is installed and that you have permissions to acces it;
+          <br>
+          3) Your firewall isn't blocking OpenVPN;
+          <br>
+          4) This application is up-to-date;
+          <br>
+          5) You don't have multiple VPN's running at any given time;
+        </p>
+
+        <h2>Technical Error</h2>
+        <code>
+          {{ error }}
+        </code>
       </div>
     </script>
 

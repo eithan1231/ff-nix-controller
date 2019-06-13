@@ -5,6 +5,7 @@ class routeInterface
   static async init(options = {})
   {
     this.OpenVPN = options.OpenVPN || null;
+    this.AutoAPI = options.AutoAPI || null;
 
     this.webSocketServer = new WebSocket.Server({ noServer: true });
     this.webSocketServer.on('connection', routeInterface._onConnection.bind(this));
@@ -16,7 +17,26 @@ class routeInterface
       });
     };
 
+    if(this.AutoAPI) {
+      this.AutoAPI.on('logout', async () => {
+        // Ensure VPN connection is terminated
+        await this.OpenVPN.kill();
+
+        // Saying we're logged out.
+        this.webSocketServer.json({
+          reason: 'logout'
+        });
+      });
+    }
+
     if(this.OpenVPN) {
+      this.OpenVPN.on('error', (err) => {
+        this.webSocketServer.json({
+          reason: 'internal-error',
+          error: err
+        });
+      })
+
       this.OpenVPN.on('state', (state) => {
         this.webSocketServer.json({
           reason: 'openvpn-state',
@@ -41,69 +61,40 @@ class routeInterface
 
   static _onConnection(options, ws, req)
   {
-    const { RemoteContext, AutoAPI } = options;
-
     ws.json({
       reason: 'init',
-      loggedIn: AutoAPI.isLoggedIn()
+      loggedIn: this.AutoAPI.isLoggedIn()
     });
 
     ws.on('json', async (json) => {
       switch (json.reason) {
         case 'login': {
-          // On login successful, broadcast such. Otherwise just send failed
-          // response to the client who sent the request.
-          if(!AutoAPI.isLoggedIn()) {
-            const res = await AutoAPI.authenticate(json.username, json.password);
-            if(res.message === 'okay') {
-              this.webSocketServer.json({
-                reason: 'login-response',
-                loggedIn: true,
-                message: res.message
-              });
-            }
-            else {
-              ws.json({
-                reason: 'login-response',
-                loggedIn: false,
-                message: res.message
-              });
-            }
-          }
+          await routeInterface._onDoLogin(ws, json);
           break;
         }
 
         case 'connect': {
-          if(typeof json.nodeId !== 'undefined') {
-            if(this.OpenVPN.isRunning()) {
-              await this.OpenVPN.kill();
-            }
-            await this.OpenVPN.start(json.nodeId);
-          }
+          await routeInterface._onDoConnect(ws, json);
           break;
         }
 
         case 'disconnect': {
-          if(this.OpenVPN.isRunning()) {
-            await this.OpenVPN.kill();
-          }
+          await routeInterface._onDoDisconnect(ws, json);
           break;
         }
 
         case 'server-list': {
-          const nodeList = await AutoAPI.getNodes();
-          if(nodeList) {
-            ws.json({
-              reason: 'server-list-response',
-              servers: nodeList
-            });
-          }
+          await routeInterface._onDoServerList(ws, json);
           break;
         }
 
         case 'reload-connection-data': {
-          this.OpenVPN.emitBandwidth();
-          this.OpenVPN.emitState();
+          await routeInterface._onDoReloadConnectionData(ws, json);
+          break;
+        }
+
+        case 'logout': {
+          await routeInterface._onDoLogout(ws, json);
           break;
         }
 
@@ -112,6 +103,90 @@ class routeInterface
         }
       }
     });
+  }
+
+  static async _onDoLogin(ws, json)
+  {
+    // On login successful, broadcast such. Otherwise just send failed
+    // response to the client who sent the request.
+    if(!this.AutoAPI.isLoggedIn()) {
+      const res = await this.AutoAPI.authenticate(json.username, json.password);
+      if(res.message === 'okay') {
+        this.webSocketServer.json({
+          reason: 'login-response',
+          loggedIn: true,
+          message: res.message
+        });
+      }
+      else {
+        ws.json({
+          reason: 'login-response',
+          loggedIn: false,
+          message: res.message
+        });
+      }
+    }
+  }
+
+  static async _onDoConnect(ws, json)
+  {
+    try {
+      if(typeof json.nodeId !== 'undefined') {
+        if(this.OpenVPN.isRunning()) {
+          await this.OpenVPN.kill();
+        }
+
+        const connectStatus = await this.OpenVPN.start(json.nodeId);
+
+        this.webSocketServer.json({
+          reason: 'connect-response',
+          message: connectStatus.message
+        });
+      }
+    }
+    catch(err) {
+      this.webSocketServer.json({
+        reason: 'internal-error',
+        error: err
+      });
+    }
+  }
+
+  static async _onDoDisconnect(ws, json)
+  {
+    if(this.OpenVPN.isRunning()) {
+      await this.OpenVPN.kill();
+    }
+  }
+
+  static async _onDoServerList(ws, json)
+  {
+    try {
+      const nodeList = await this.AutoAPI.getNodes();
+      if(nodeList) {
+        ws.json({
+          reason: 'server-list-response',
+          servers: nodeList
+        });
+      }
+    }
+    catch(err) {
+      this.webSocketServer.json({
+        reason: 'internal-error',
+        error: err
+      });
+    }
+  }
+
+  static async _onDoReloadConnectionData(ws, json)
+  {
+    this.OpenVPN.emitBandwidth();
+    this.OpenVPN.emitState();
+  }
+
+  static async _onDoLogout(ws, json)
+  {
+    this.AutoAPI.logout();
   }
 
   static getName()
